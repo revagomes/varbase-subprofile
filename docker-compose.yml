@@ -1,0 +1,388 @@
+version: "3.7"
+
+services:
+  mariadb:
+    image: wodby/mariadb:$MARIADB_TAG
+    container_name: "${PROJECT_NAME}_mariadb"
+    networks:
+      pece:
+      peceV1:
+    stop_grace_period: 30s
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+      MYSQL_DATABASE: $DB_NAME
+      MYSQL_USER: $DB_USER
+      MYSQL_PASSWORD: $DB_PASSWORD
+      MYSQL_PORT: $DB_PORT
+    volumes:
+      - ./docker/database/data:/var/lib/mysql # Use bind mount
+
+  php:
+    image: wodby/drupal-php:$PHP_TAG
+    container_name: "${PROJECT_NAME}_php"
+    networks:
+      pece:
+      peceV1:
+    environment:
+      PHP_SENDMAIL_PATH: /usr/sbin/sendmail -t -i -S mailhog:1025
+      DB_HOST: $DB_HOST
+      DB_USER: $DB_USER
+      MIGRATE_V1_URL: $MIGRATE_V1_URL
+      DB_PASSWORD: $DB_PASSWORD
+      DB_NAME: $DB_NAME
+      DB_DRIVER: $DB_DRIVER
+      PHP_FPM_USER: wodby
+      PHP_FPM_GROUP: wodby
+      COLUMNS: 80 # Set 80 columns for docker exec -it.
+    env_file:
+      - .env
+    volumes:
+      - ./:/var/www/html
+
+  nginx:
+    image: wodby/nginx:$NGINX_TAG
+    networks:
+      pece:
+        aliases:
+          - ${PROJECT_BASE_URL}
+      peceV1:
+    container_name: "${PROJECT_NAME}_nginx"
+    depends_on:
+      - php
+    environment:
+      NGINX_STATIC_OPEN_FILE_CACHE: "off"
+      NGINX_ERROR_LOG_LEVEL: debug
+      NGINX_BACKEND_HOST: php
+      NGINX_SERVER_ROOT: /var/www/html/web
+      NGINX_VHOST_PRESET: $NGINX_VHOST_PRESET
+#      NGINX_DRUPAL_FILE_PROXY_URL: http://example.com
+    volumes:
+      - ./:/var/www/html
+# For macOS users (https://wodby.com/stacks/drupal/docs/local/docker-for-mac/)
+#      - ./:/var/www/html:cached # User-guided caching
+#      - docker-sync:/var/www/html # Docker-sync
+    labels:
+      - "traefik.http.routers.${PROJECT_NAME}_nginx.rule=Host(`${PROJECT_BASE_URL}`)"
+
+  mailhog:
+    image: mailhog/mailhog
+    networks:
+      pece:
+    container_name: "${PROJECT_NAME}_mailhog"
+    labels:
+      - "traefik.http.services.${PROJECT_NAME}_mailhog.loadbalancer.server.port=8025"
+      - "traefik.http.routers.${PROJECT_NAME}_mailhog.rule=Host(`mailhog.${PROJECT_BASE_URL}`)"
+
+  #  postgres:
+  #    image: wodby/postgres:$POSTGRES_TAG
+  #    container_name: "${PROJECT_NAME}_postgres"
+  #    stop_grace_period: 30s
+  #    environment:
+  #      POSTGRES_PASSWORD: $DB_PASSWORD
+  #      POSTGRES_DB: $DB_NAME
+  #      POSTGRES_USER: $DB_USER
+  #    volumes:
+  #      - ./postgres-init:/docker-entrypoint-initdb.d # Place init file(s) here.
+  #      - /path/to/postgres/data/on/host:/var/lib/postgresql/data # Use bind mount
+
+  #  apache:
+  #    image: wodby/apache:$APACHE_TAG
+  #    container_name: "${PROJECT_NAME}_apache"
+  #    depends_on:
+  #      - php
+  #    environment:
+  #      APACHE_LOG_LEVEL: debug
+  #      APACHE_BACKEND_HOST: php
+  #      APACHE_VHOST_PRESET: php
+  #      APACHE_DOCUMENT_ROOT: /var/www/html/web
+  #    volumes:
+  #      - ./:/var/www/html
+  ## For macOS users (https://wodby.com/docs/stacks/drupal/local#docker-for-mac)
+  ##      - ./:/var/www/html:cached # User-guided caching
+  ##      - docker-sync:/var/www/html # Docker-sync
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_apache.rule=Host(`${PROJECT_BASE_URL}`)"
+
+  #  varnish:
+  #    image: wodby/varnish:$VARNISH_TAG
+  #    container_name: "${PROJECT_NAME}_varnish"
+  #    depends_on:
+  #      - nginx
+  #    environment:
+  #      VARNISH_SECRET: secret
+  #      VARNISH_BACKEND_HOST: nginx
+  #      VARNISH_BACKEND_PORT: 80
+  #      VARNISH_CONFIG_PRESET: drupal
+  #      VARNISH_ALLOW_UNRESTRICTED_PURGE: 1
+  #    labels:
+  #      - "traefik.http.services.${PROJECT_NAME}_varnish.loadbalancer.server.port=6081"
+  #      - "traefik.http.routers.${PROJECT_NAME}_varnish.rule=Host(`varnish.${PROJECT_BASE_URL}`)"
+
+  #  redis:
+  #    container_name: "${PROJECT_NAME}_redis"
+  #    image: wodby/redis:$REDIS_TAG
+
+  #  adminer:
+  #    container_name: "${PROJECT_NAME}_adminer"
+  #    image: wodby/adminer:$ADMINER_TAG
+  #    environment:
+  ## For PostgreSQL:
+  ##      ADMINER_DEFAULT_DB_DRIVER: pgsql
+  #      ADMINER_DEFAULT_DB_HOST: $DB_HOST
+  #      ADMINER_DEFAULT_DB_NAME: $DB_NAME
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_adminer.rule=Host(`adminer.${PROJECT_BASE_URL}`)"
+
+  # pma:
+  #   image: phpmyadmin/phpmyadmin
+  #   container_name: "${PROJECT_NAME}_pma"
+  #   environment:
+  #     PMA_HOST: $DB_HOST
+  #     PMA_USER: $DB_USER
+  #     PMA_PASSWORD: $DB_PASSWORD
+  #     MYSQL_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+  #     MYSQL_PASSWORD: $DB_PASSWORD
+  #     PMA_HOSTS: mariadb
+  #     PMA_CONTROLPASS: $DB_PASSWORD
+  #     UPLOAD_LIMIT: 1G
+  #   labels:
+  #     - "traefik.http.routers.${PROJECT_NAME}_pma.rule=Host(`pma.${PROJECT_BASE_URL}`)"
+
+  #  solr:
+  #    image: wodby/solr:$SOLR_TAG
+  #    container_name: "${PROJECT_NAME}_solr"
+  #    environment:
+  #      SOLR_DEFAULT_CONFIG_SET: $SOLR_CONFIG_SET
+  #      SOLR_HEAP: 1024m
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_solr.rule=Host(`solr.${PROJECT_BASE_URL}`)"
+
+  #  drupal-node:
+  #    image: wodby/drupal-node:$DRUPAL_NODE_TAG
+  #    container_name: "${PROJECT_NAME}_drupal_nodejs"
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_drupal_node.rule=Host(`drupal_node.${PROJECT_BASE_URL}`)"
+  #    environment:
+  #      NODE_SERVICE_KEY: node-service-key
+
+  #  memcached:
+  #    container_name: "${PROJECT_NAME}_memcached"
+  #    image: wodby/memcached:$MEMCACHED_TAG
+
+  #  rsyslog:
+  #    container_name: "${PROJECT_NAME}_rsyslog"
+  #    image: wodby/rsyslog:$RSYSLOG_TAG
+
+  #  athenapdf:
+  #    image: arachnysdocker/athenapdf-service:$ATHENAPDF_TAG
+  #    container_name: "${PROJECT_NAME}_athenapdf"
+  #    environment:
+  #      WEAVER_AUTH_KEY: weaver-auth-key
+  #      WEAVER_ATHENA_CMD: "athenapdf -S"
+  #      WEAVER_MAX_WORKERS: 10
+  #      WEAVER_MAX_CONVERSION_QUEUE: 50
+  #      WEAVER_WORKER_TIMEOUT: 90
+  #      WEAVER_CONVERSION_FALLBACK: "false"
+
+  #  node:
+  #    image: wodby/node:$NODE_TAG
+  #    container_name: "${PROJECT_NAME}_node"
+  #    working_dir: /var/www/html/path/to/theme/to/build
+  #    labels:
+  #      - "traefik.http.services.${PROJECT_NAME}_node.loadbalancer.server.port=3000"
+  #      - "traefik.http.routers.${PROJECT_NAME}_node.rule=Host(`node.${PROJECT_BASE_URL}`)"
+  #    expose:
+  #      - "3000"
+  #    volumes:
+  #      - ./:/var/www/html
+  #    command: sh -c 'yarn install && yarn run start'
+
+  #  blackfire:
+  #    image: blackfire/blackfire
+  #    container_name: "${PROJECT_NAME}_blackfire"
+  #    environment:
+  #      BLACKFIRE_SERVER_ID: XXXXX
+  #      BLACKFIRE_SERVER_TOKEN: YYYYY
+
+  #  webgrind:
+  #    image: wodby/webgrind:$WEBGRIND_TAG
+  #    container_name: "${PROJECT_NAME}_webgrind"
+  #    environment:
+  #      WEBGRIND_PROFILER_DIR: /mnt/files/xdebug/profiler
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_webgrind.rule=Host(`webgrind.${PROJECT_BASE_URL}`)"
+  #    volumes:
+  #      - files:/mnt/files
+
+  #  elasticsearch:
+  #    image: wodby/elasticsearch:$ELASTICSEARCH_TAG
+  #    container_name: "${PROJECT_NAME}_elasticsearch"
+  #    environment:
+  #      ES_JAVA_OPTS: "-Xms500m -Xmx500m"
+  #    ulimits:
+  #      memlock:
+  #        soft: -1
+  #        hard: -1
+
+  #  kibana:
+  #    image: wodby/kibana:$KIBANA_TAG
+  #    container_name: "${PROJECT_NAME}_kibana"
+  #    depends_on:
+  #      - elasticsearch
+  #    labels:
+  #      - "traefik.http.services.${PROJECT_NAME}_kibana.loadbalancer.server.port=5601"
+  #      - "traefik.http.routers.${PROJECT_NAME}_kibana.rule=Host(`kibana.${PROJECT_BASE_URL}`)"
+
+  #  opensmtpd:
+  #    container_name: "${PROJECT_NAME}_opensmtpd"
+  #    image: wodby/opensmtpd:$OPENSMTPD_TAG
+
+  #  xhprof:
+  #    image: wodby/xhprof:$XHPROF_TAG
+  #    container_name: "${PROJECT_NAME}_xhprof"
+  #    restart: always
+  #    volumes:
+  #      - files:/mnt/files
+  #    labels:
+  #      - "traefik.http.routers.${PROJECT_NAME}_xhprof.rule=Host(`xhprof.${PROJECT_BASE_URL}`)"
+
+  #  chrome:
+  #    image: selenium/standalone-chrome:$SELENIUM_CHROME_TAG
+  #    container_name: "${PROJECT_NAME}_chrome"
+  #    volumes:
+  #      - /dev/shm:/dev/shm
+  #    entrypoint:
+  #      - chromedriver
+  #      - "--no-sandbox"
+  #      - "--disable-dev-shm-usage"
+  #      - "--log-path=/tmp/chromedriver.log"
+  #      - "--verbose"
+  #      - "--whitelisted-ips="
+
+  node:
+    image: wodby/node:$NODE_TAG
+    container_name: "${PROJECT_NAME}_front_node"
+    networks:
+      pece:
+    working_dir: /home/node/app
+    labels:
+      - "traefik.http.services.${PROJECT_NAME}_front_node-service.loadbalancer.server.port=5000"
+      - "traefik.http.routers.${PROJECT_NAME}_front_node.rule=Host(`${PROJECT_BASE_URL}`)"
+    volumes:
+      - $FRONT_DIR:/home/node/app
+    command: bash -c "npm install && npm run build && npm run start"
+
+  n8n:
+    build:
+      context: docker/n8n
+#    image: n8nio/n8n:0.62.1-ubuntu
+    container_name: "${PROJECT_NAME}_n8n"
+    networks:
+      pece:
+    environment:
+      N8N_CLIENT_ID: $N8N_CLIENT_ID
+      N8N_CLIENT_SECRET: $N8N_CLIENT_SECRET
+      SITE_N8N_USERNAME: $SITE_N8N_USERNAME
+      SITE_N8N_PASSWORD: $SITE_N8N_PASSWORD
+    labels:
+      - "traefik.http.routers.${PROJECT_NAME}_n8n.rule=Host(`n8n.${PROJECT_BASE_URL}`)"
+      - "traefik.http.middlewares.auth.basicauth.users=${N8N_HTTP_ACCESS}"
+      - "traefik.http.routers.${PROJECT_NAME}_n8n.middlewares=auth"
+    ports:
+      - 5678:5678
+    volumes:
+      - ~/.n8n:/root/.n8n
+      - ./n8n-automations:/root/.pece/automations
+
+#  blackfire:
+#    image: blackfire/blackfire
+#    container_name: "${PROJECT_NAME}_blackfire"
+#    environment:
+#      BLACKFIRE_SERVER_ID: XXXXX
+#      BLACKFIRE_SERVER_TOKEN: YYYYY
+
+#  webgrind:
+#    image: wodby/webgrind:$WEBGRIND_TAG
+#    container_name: "${PROJECT_NAME}_webgrind"
+#    environment:
+#      WEBGRIND_PROFILER_DIR: /mnt/files/xdebug/profiler
+#    labels:
+#      - 'traefik.backend=webgrind'
+#      - 'traefik.port=8080'
+#      - 'traefik.frontend.rule=Host:webgrind.${PROJECT_BASE_URL}'
+#    volumes:
+#      - files:/mnt/files
+
+#  elasticsearch:
+#    image: wodby/elasticsearch:$ELASTICSEARCH_TAG
+#    environment:
+#      ES_JAVA_OPTS: "-Xms500m -Xmx500m"
+#    ulimits:
+#      memlock:
+#        soft: -1
+#        hard: -1
+
+#  kibana:
+#    image: wodby/kibana:$KIBANA_TAG
+#    depends_on:
+#      - elasticsearch
+#    labels:
+#      - 'traefik.backend=${PROJECT_NAME}_kibana'
+#      - 'traefik.port=5601'
+#      - 'traefik.frontend.rule=Host:kibana.php.docker.localhost'
+
+#  opensmtpd:
+#    container_name: "${PROJECT_NAME}_opensmtpd"
+#    image: wodby/opensmtpd:$OPENSMTPD_TAG
+
+#  xhprof:
+#    image: wodby/xhprof:$XHPROF_TAG
+#    restart: always
+#    volumes:
+#      - files:/mnt/files
+#    labels:
+#      - 'traefik.backend=${PROJECT_NAME}_xhprof'
+#      - 'traefik.port=8080'
+#      - 'traefik.frontend.rule=Host:xhprof.${PROJECT_BASE_URL}'
+
+  portainer:
+    image: portainer/portainer-ce
+    container_name: "${PROJECT_NAME}_portainer"
+    command: -H unix:///var/run/docker.sock
+    networks:
+      pece:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.http.routers.${PROJECT_NAME}_portainer.rule=Host(`portainer.${PROJECT_BASE_URL}`)"
+
+  traefik:
+    image: traefik:v2.2
+    container_name: "${PROJECT_NAME}_traefik"
+    command: --api.insecure=true --providers.docker
+    networks:
+      pece:
+      peceV1:
+    ports:
+      - '80:80'
+      - '8181:8080' # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  pece:
+    name: pecev2
+    driver: bridge
+    ipam:
+      driver: default
+
+  peceV1:
+    name: pecev1
+    ipam:
+      driver: default
+#volumes:
+## Docker-sync for macOS users
+#  docker-sync:
+#    external: true
+## For Xdebug profiler
+#  files:
