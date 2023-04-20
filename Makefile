@@ -53,7 +53,7 @@ build-dev:
 ##	site-install	:	(Re)Install PECE profile.
 site-install:
 	@echo "Starting $(PROJECT_NAME) install phase..."
-	docker exec -t $(PHP_CONTAINER) bash -c 'vendor/bin/drush si pece install_configure_form.site_name=PECE2 -y'
+	docker exec -t $(PHP_CONTAINER) bash -c 'vendor/bin/drush si varbase_subprofile_basic install_configure_form.site_name=PECE2 -y'
 	@make perm-fix
 	@echo "Finish $(PROJECT_NAME) Install phase."
 
